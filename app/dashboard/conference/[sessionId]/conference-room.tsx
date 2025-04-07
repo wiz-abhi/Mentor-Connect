@@ -49,7 +49,7 @@ const ConferenceRoom = ({ sessionId }: ConferenceRoomProps) => {
     }
 
     const connectWebSocket = () => {
-      const websocket = new WebSocket(`ws://localhost:3001/ws?sessionId=${sessionId}&userId=${user.id}`)
+      const websocket = new WebSocket(`wss://mentor-server-a2zn.onrender.com/ws?sessionId=${sessionId}&userId=${user.id}`)
 
       websocket.onopen = () => {
         console.log("WebSocket connection established")
@@ -156,16 +156,19 @@ const ConferenceRoom = ({ sessionId }: ConferenceRoomProps) => {
         const peerConnection = new RTCPeerConnection(configuration)
         peerConnectionRef.current = peerConnection
 
+        // Add all tracks from the stream
         stream.getTracks().forEach(track => {
           peerConnection.addTrack(track, stream)
         })
 
+        // Handle incoming tracks
         peerConnection.ontrack = (event) => {
           if (remoteVideoRef.current) {
             remoteVideoRef.current.srcObject = event.streams[0]
           }
         }
 
+        // Handle ICE candidates
         peerConnection.onicecandidate = (event) => {
           if (event.candidate && ws?.readyState === WebSocket.OPEN) {
             ws.send(JSON.stringify({
@@ -175,6 +178,7 @@ const ConferenceRoom = ({ sessionId }: ConferenceRoomProps) => {
           }
         }
 
+        // Handle connection state changes
         peerConnection.onconnectionstatechange = () => {
           switch (peerConnection.connectionState) {
             case 'connected':
@@ -189,6 +193,7 @@ const ConferenceRoom = ({ sessionId }: ConferenceRoomProps) => {
           }
         }
 
+        // Create and send offer
         const offer = await peerConnection.createOffer()
         await peerConnection.setLocalDescription(offer)
         if (ws?.readyState === WebSocket.OPEN) {
@@ -219,6 +224,75 @@ const ConferenceRoom = ({ sessionId }: ConferenceRoomProps) => {
       }
     }
   }, [user?.id, ws, toast])
+
+  // Handle WebSocket messages
+  useEffect(() => {
+    if (!ws) return
+
+    ws.onmessage = (event) => {
+      const message = JSON.parse(event.data)
+      
+      if (message.type === 'no-participant') {
+        setConnectionStatus('waiting')
+        return
+      }
+
+      if (message.type === 'chat') {
+        setMessages(prev => [...prev, message.message])
+        return
+      }
+
+      if (!peerConnectionRef.current) return
+
+      switch (message.type) {
+        case 'offer':
+          handleOffer(message.offer)
+          break
+        case 'answer':
+          handleAnswer(message.answer)
+          break
+        case 'ice-candidate':
+          handleIceCandidate(message.candidate)
+          break
+      }
+    }
+  }, [ws])
+
+  const handleOffer = async (offer: RTCSessionDescriptionInit) => {
+    if (!peerConnectionRef.current) return
+
+    try {
+      await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(offer))
+      const answer = await peerConnectionRef.current.createAnswer()
+      await peerConnectionRef.current.setLocalDescription(answer)
+      
+      if (ws?.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'answer', answer }))
+      }
+    } catch (error) {
+      console.error('Error handling offer:', error)
+    }
+  }
+
+  const handleAnswer = async (answer: RTCSessionDescriptionInit) => {
+    if (!peerConnectionRef.current) return
+
+    try {
+      await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(answer))
+    } catch (error) {
+      console.error('Error handling answer:', error)
+    }
+  }
+
+  const handleIceCandidate = async (candidate: RTCIceCandidateInit) => {
+    if (!peerConnectionRef.current) return
+
+    try {
+      await peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(candidate))
+    } catch (error) {
+      console.error('Error handling ICE candidate:', error)
+    }
+  }
 
   const toggleMic = () => {
     if (localVideoRef.current?.srcObject) {
