@@ -39,6 +39,7 @@ export default function AIMentorPage() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [facialExpressions, setFacialExpressions] = useState<FacialExpressions | null>(null);
   const [currentEmotions, setCurrentEmotions] = useState<Array<{name: string, score: number}> | null>(null);
+  const [dominantEmotion, setDominantEmotion] = useState<string>('');
   const [videoStream, setVideoStream] = useState<MediaStream | null>(null);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [hasVideoPermission, setHasVideoPermission] = useState(false);
@@ -94,6 +95,27 @@ export default function AIMentorPage() {
       videoRef.current.srcObject = videoStream;
     }
   }, [videoStream]);
+
+  // Add this useEffect for periodic emotion analysis
+  useEffect(() => {
+    let intervalId: NodeJS.Timeout;
+
+    if (isCameraOn && videoRef.current) {
+      // Initial analysis
+      captureAndAnalyzeFrame();
+      
+      // Set up interval for periodic analysis
+      intervalId = setInterval(() => {
+        captureAndAnalyzeFrame();
+      }, 5000); // Every 5 seconds
+    }
+
+    return () => {
+      if (intervalId) {
+        clearInterval(intervalId);
+      }
+    };
+  }, [isCameraOn, videoRef.current]);
 
   const captureAndAnalyzeFrame = useCallback(async () => {
     if (!videoRef.current || !canvasRef.current || !isCameraOn || !videoStream) return;
@@ -226,9 +248,15 @@ export default function AIMentorPage() {
                   if (emotions && emotions.length > 0) {
                     console.log("Emotions found:", emotions.length, "emotions");
                     setFacialExpressions({ emotions });
-                    // Store the current emotions in state
                     setCurrentEmotions(emotions);
-                    console.log("Stored emotions:", emotions.length, "emotions");
+                    
+                    // Find and set dominant emotion
+                    if (emotions && emotions.length > 0) {
+                      const dominant = emotions.reduce((max: { name: string; score: number }, emotion: { name: string; score: number }) => 
+                        emotion.score > max.score ? emotion : max
+                      );
+                      setDominantEmotion(dominant.name);
+                    }
                     
                     predictionsFound = true;
                   } else {
@@ -305,11 +333,6 @@ export default function AIMentorPage() {
         
         // Initial emotion capture when camera starts
         captureAndAnalyzeFrame();
-        
-        // Set up interval to capture emotions every 5 seconds
-        captureIntervalRef.current = setInterval(() => {
-          captureAndAnalyzeFrame();
-        }, 5000);
         
       } catch (err) {
         setHasVideoPermission(false);
@@ -466,19 +489,8 @@ export default function AIMentorPage() {
   const handleUserMessage = async (content: string) => {
     if (!content.trim()) return;
     
-    // No need to capture emotions here, we're already doing it every 5 seconds
-    
     setIsLoading(true);
     try {
-      // Find dominant emotion (highest score) from current state
-      let dominantEmotion = '';
-      if (currentEmotions && currentEmotions.length > 0) {
-        dominantEmotion = currentEmotions.reduce((max, emotion) => 
-          emotion.score > max.score ? emotion : max
-        ).name;
-      }
-      
-      // Add user message with current emotion if available
       const userMessage: Message = {
         id: crypto.randomUUID(),
         role: 'user',
@@ -548,30 +560,13 @@ export default function AIMentorPage() {
     }
   };
 
-  // Format current emotions for display - now showing only top 5
-  const formattedEmotions = useMemo(() => {
-    if (!currentEmotions || currentEmotions.length === 0) return null;
-    
-    // Sort emotions by score (highest first)
-    const sortedEmotions = [...currentEmotions].sort((a, b) => b.score - a.score);
-    
-    // Take only top 5
-    const top5Emotions = sortedEmotions.slice(0, 5);
-    
-    // Convert to object format for easier display
-    const emotionsObj: Record<string, number> = {};
-    top5Emotions.forEach(emotion => {
-      emotionsObj[emotion.name] = emotion.score;
-    });
-    
-    // The dominant emotion is the first in the sorted array
-    const dominantEmotion = sortedEmotions[0].name;
-    
-    return {
-      emotions: emotionsObj,
-      dominantEmotion
-    };
-  }, [currentEmotions]);
+  // Add this function to get top 5 emotions
+  const getTopEmotions = () => {
+    if (!currentEmotions) return [];
+    return [...currentEmotions]
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 5);
+  };
 
   return (
     <div className="flex h-[calc(100vh-4rem)]">
@@ -703,7 +698,7 @@ export default function AIMentorPage() {
                 />
                 <canvas
                   ref={canvasRef}
-                  className="hidden" // Hide canvas but keep it for image capture
+                  className="hidden"
                 />
                 {isAnalyzing && (
                   <div className="absolute top-4 right-4 bg-black/70 text-white p-2 rounded-lg">
@@ -711,17 +706,14 @@ export default function AIMentorPage() {
                     <span className="text-xs ml-2">Analyzing...</span>
                   </div>
                 )}
-                {formattedEmotions && (
+                {currentEmotions && (
                   <div className="absolute bottom-4 left-4 bg-black/70 text-white p-3 rounded-lg">
-                    <h3 className="font-semibold mb-1">Top 5 Emotions</h3>
-                    <p className="text-sm mb-1">
-                      Dominant: <span className="font-medium">{formattedEmotions.dominantEmotion}</span>
-                    </p>
-                    <div className="grid grid-cols-2 gap-1 text-xs">
-                      {Object.entries(formattedEmotions.emotions).map(([emotion, score]) => (
-                        <div key={emotion} className="flex justify-between">
-                          <span>{emotion}:</span>
-                          <span>{(score * 100).toFixed(1)}%</span>
+                    <h3 className="font-semibold mb-2">Current Emotions</h3>
+                    <div className="space-y-1">
+                      {getTopEmotions().map((emotion) => (
+                        <div key={emotion.name} className="flex justify-between items-center">
+                          <span className="text-sm">{emotion.name}</span>
+                          <span className="text-xs">{(emotion.score * 100).toFixed(1)}%</span>
                         </div>
                       ))}
                     </div>

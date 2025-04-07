@@ -26,7 +26,7 @@ export async function POST(request: Request) {
     }
     
     console.log(`Generating speech for text: "${text.substring(0, 50)}${text.length > 50 ? '...' : ''}"`);
-    console.log(`Using description: "${description || 'A friendly, supportive mentor'}"`);
+    // console.log(`Using description: "${description || 'A friendly, supportive mentor'}"`);
     
     // Create speech from text using Hume AI
     const speechResponse = await hume.tts.synthesizeJson({
