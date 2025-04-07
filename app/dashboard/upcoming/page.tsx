@@ -18,6 +18,9 @@ interface SessionRow {
   expertise: string[] | null
 }
 
+// Mark the page as dynamic
+export const dynamic = 'force-dynamic'
+
 export default async function UpcomingSessionsPage() {
   const { data } = await getSession()
   if (!data.session?.user) {
