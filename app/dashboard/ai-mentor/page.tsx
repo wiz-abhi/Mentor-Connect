@@ -447,6 +447,7 @@ export default function AIMentorPage() {
   };
 
   const speakResponse = async (text: string) => {
+    let audioUrl: string | null = null;
     try {
       const response = await fetch('/api/ai-mentor/speak', {
         method: 'POST',
@@ -464,15 +465,21 @@ export default function AIMentorPage() {
       const audioBlob = await response.blob();
       
       // Create a URL for the blob
-      const audioUrl = URL.createObjectURL(audioBlob);
+      audioUrl = URL.createObjectURL(audioBlob);
       
       // Create and play the audio
       const audio = new Audio(audioUrl);
       
-      // Clean up the URL after playing
-      audio.onended = () => {
-        URL.revokeObjectURL(audioUrl);
+      // Clean up the URL after playing or if there's an error
+      const cleanup = () => {
+        if (audioUrl) {
+          URL.revokeObjectURL(audioUrl);
+          audioUrl = null;
+        }
       };
+      
+      audio.onended = cleanup;
+      audio.onerror = cleanup;
       
       // Play the audio
       await audio.play();
@@ -484,6 +491,11 @@ export default function AIMentorPage() {
         description: 'Failed to play audio response',
         variant: 'destructive',
       });
+    } finally {
+      // Ensure cleanup happens even if there's an error
+      if (audioUrl) {
+        URL.revokeObjectURL(audioUrl);
+      }
     }
   };
 
