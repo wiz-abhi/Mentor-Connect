@@ -460,22 +460,23 @@ export default function AIMentorPage() {
         throw new Error('Failed to generate speech');
       }
 
-      const data = await response.json();
-      if (data.audioUrl) {
-        const audio = new Audio(data.audioUrl);
-        
-        await new Promise((resolve, reject) => {
-          audio.oncanplaythrough = resolve;
-          audio.onerror = reject;
-          audio.load();
-        });
-        
-        await audio.play();
-        
-        await new Promise(resolve => {
-          audio.onended = resolve;
-        });
-      }
+      // Get the audio blob from the response
+      const audioBlob = await response.blob();
+      
+      // Create a URL for the blob
+      const audioUrl = URL.createObjectURL(audioBlob);
+      
+      // Create and play the audio
+      const audio = new Audio(audioUrl);
+      
+      // Clean up the URL after playing
+      audio.onended = () => {
+        URL.revokeObjectURL(audioUrl);
+      };
+      
+      // Play the audio
+      await audio.play();
+      
     } catch (error) {
       console.error('Error playing audio:', error);
       toast({
@@ -526,6 +527,7 @@ export default function AIMentorPage() {
       };
 
       setMessages(prev => [...prev, aiMessage]);
+      await speakResponse(aiMessage.content);
       
       if (sessionIdRef.current) {
         try {
@@ -544,7 +546,6 @@ export default function AIMentorPage() {
         }
       }
       
-      await speakResponse(aiMessage.content);
       
       return aiMessage;
     } catch (error) {
