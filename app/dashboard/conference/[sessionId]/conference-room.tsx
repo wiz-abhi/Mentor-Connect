@@ -163,6 +163,7 @@ const ConferenceRoom = ({ sessionId }: ConferenceRoomProps) => {
 
         // Handle incoming tracks
         peerConnection.ontrack = (event) => {
+          console.log('Received remote track:', event.track.kind)
           if (remoteVideoRef.current) {
             remoteVideoRef.current.srcObject = event.streams[0]
           }
@@ -180,6 +181,7 @@ const ConferenceRoom = ({ sessionId }: ConferenceRoomProps) => {
 
         // Handle connection state changes
         peerConnection.onconnectionstatechange = () => {
+          console.log('Connection state changed:', peerConnection.connectionState)
           switch (peerConnection.connectionState) {
             case 'connected':
               setConnectionStatus('connected')
@@ -194,7 +196,10 @@ const ConferenceRoom = ({ sessionId }: ConferenceRoomProps) => {
         }
 
         // Create and send offer
-        const offer = await peerConnection.createOffer()
+        const offer = await peerConnection.createOffer({
+          offerToReceiveAudio: true,
+          offerToReceiveVideo: true
+        })
         await peerConnection.setLocalDescription(offer)
         if (ws?.readyState === WebSocket.OPEN) {
           ws.send(JSON.stringify({ type: 'offer', offer }))
